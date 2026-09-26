@@ -35,6 +35,19 @@ Invalid or unsupported documents return HTTP 422. Missing trust data returns HTT
 
 Malformed JSON or multipart requests return a short HTTP 400 error without echoing the request body. The default logs show trust-list refresh outcomes, revocation refresh summaries, and verification counts and duration. Enable `DEBUG` for `io.github.seuh.esig` when investigating validation details; submitted documents, filenames, and certificate bytes are not included in application log messages.
 
+## Container
+
+Build and run the image locally, persisting DSS cache files in a named volume. The current LOTL refresh setting still fetches the lists at startup, even when cache files exist.
+
+```bash
+docker build -t esig-dss-api .
+docker run --rm -p 8080:8080 \
+  -v esig-dss-cache:/var/cache/esig-dss-api \
+  esig-dss-api
+```
+
+Pushing a `v*` Git tag runs the Maven test suite and then publishes the image to `ghcr.io/seuh/esig-dss-api` with the release tag, semantic version tags, and `latest`. The workflow uses the repository's `GITHUB_TOKEN`; no registry secret is needed. GitHub Container Registry packages are private by default, so change the package visibility in its GitHub settings if public pulls are intended.
+
 References: [DSS validation and trusted-list configuration](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html), [eIDAS trusted-list dashboard](https://eidas.ec.europa.eu/efda/trust-services/browse/eidas/tls), [eIDAS API documentation](https://eidas.ec.europa.eu/efda/swagger-ui/index.html), [DSS releases](https://ec.europa.eu/digital-building-blocks/sites/spaces/DIGITAL/pages/467109114/DSS+releases), [Spring Boot releases](https://docs.spring.io/spring-boot/).
 
 ## License
