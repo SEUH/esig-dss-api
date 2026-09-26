@@ -1,0 +1,22 @@
+info:
+  name: verify signature
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://127.0.0.1:8080/api/verify
+  body:
+    type: file
+    data:
+      - filePath: ""
+        contentType: ""
+        selected: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
