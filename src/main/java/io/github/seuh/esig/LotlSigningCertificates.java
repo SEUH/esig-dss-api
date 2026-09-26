@@ -10,8 +10,11 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Set;
 
 final class LotlSigningCertificates {
@@ -29,11 +32,20 @@ final class LotlSigningCertificates {
     private LotlSigningCertificates() {}
 
     static CommonCertificateSource load() throws IOException, CertificateException, NoSuchAlgorithmException {
+        return readBundle().source();
+    }
+
+    static List<SignerInfo> summaries() throws IOException, CertificateException, NoSuchAlgorithmException {
+        return readBundle().signers();
+    }
+
+    private static Bundle readBundle() throws IOException, CertificateException, NoSuchAlgorithmException {
         try (InputStream input = LotlSigningCertificates.class.getResourceAsStream("/eu-lotl-signers.pem")) {
             if (input == null) {
                 throw new IOException("Bundled Official Journal LOTL certificates are missing");
             }
             CommonCertificateSource source = new CommonCertificateSource();
+            List<SignerInfo> signers = new ArrayList<>();
             Set<String> actual = new HashSet<>();
             CertificateFactory factory = CertificateFactory.getInstance("X.509");
             for (var certificate : factory.generateCertificates(input)) {
@@ -44,11 +56,17 @@ final class LotlSigningCertificates {
                 }
                 actual.add(digest);
                 source.addCertificate(new CertificateToken(x509));
+                signers.add(new SignerInfo(digest, x509.getSubjectX500Principal().getName(),
+                        x509.getNotBefore().toInstant(), x509.getNotAfter().toInstant()));
             }
             if (!actual.equals(OFFICIAL_SHA256)) {
                 throw new CertificateException("Bundled LOTL certificates are incomplete");
             }
-            return source;
+            return new Bundle(source, List.copyOf(signers));
         }
     }
+
+    record SignerInfo(String sha256Fingerprint, String subject, Instant notBefore, Instant notAfter) {}
+
+    private record Bundle(CommonCertificateSource source, List<SignerInfo> signers) {}
 }

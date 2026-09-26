@@ -45,6 +45,12 @@ public class TrustLists {
     private final ConcurrentHashMap<String, RevocationPair> trackedCertificates = new ConcurrentHashMap<>();
     private volatile TrustedListsCertificateSource trusted;
     private volatile boolean ready;
+    private volatile Instant lastRefreshAttempt;
+    private volatile Instant lastSuccessfulRefresh;
+    private volatile String lastRefreshFailure;
+    private volatile int nationalListCount;
+    private volatile int trustedCertificateCount;
+    private volatile List<LotlSigningCertificates.SignerInfo> lotlSigners = List.of();
 
     public TrustLists(@Value("${esig.lotl.url}") String url,
                       @Value("${esig.lotl.cache-dir}") String cacheDir) {
@@ -63,6 +69,8 @@ public class TrustLists {
         long started = System.nanoTime();
         log.debug("EU trust-list refresh started");
         ready = false;
+        lastRefreshAttempt = Instant.now();
+        lastRefreshFailure = null;
         try {
             File directory = new File(cacheDir);
             if (!directory.isDirectory() && !directory.mkdirs()) {
@@ -71,6 +79,7 @@ public class TrustLists {
             LOTLSource lotl = new LOTLSource();
             lotl.setUrl(url);
             lotl.setCertificateSource(LotlSigningCertificates.load());
+            lotlSigners = LotlSigningCertificates.summaries();
             lotl.setPivotSupport(true);
             lotl.setTLVersions(java.util.Arrays.asList(5, 6));
 
@@ -104,15 +113,29 @@ public class TrustLists {
                 throw new IllegalStateException("No certificates were loaded from valid EU trusted lists");
             }
             trusted = refreshed;
+            nationalListCount = nationalLists.size();
+            trustedCertificateCount = refreshed.getCertificates().size();
+            lastSuccessfulRefresh = Instant.now();
             ready = true;
             log.info("EU trust data ready: nationalLists={}, trustedCertificates={}, durationMs={}",
                     nationalLists.size(), refreshed.getCertificates().size(), elapsedMillis(started));
         } catch (Exception e) {
+            lastRefreshFailure = e.getClass().getSimpleName();
             log.error("EU trust-list refresh failed after {} ms; verification unavailable: {}",
                     elapsedMillis(started), e.toString());
             log.debug("EU trust-list refresh failure details", e);
         }
     }
+
+    TrustListStatus status() {
+        return new TrustListStatus(ready, url, lastRefreshAttempt, lastSuccessfulRefresh,
+                nationalListCount, trustedCertificateCount, lotlSigners, lastRefreshFailure);
+    }
+
+    record TrustListStatus(boolean ready, String lotlUrl, Instant lastRefreshAttempt,
+                           Instant lastSuccessfulRefresh, int nationalListCount,
+                           int trustedCertificateCount, List<LotlSigningCertificates.SignerInfo> lotlSigners,
+                           String lastRefreshFailure) {}
 
     public CommonCertificateVerifier verifier() {
         TrustedListsCertificateSource current = trusted;

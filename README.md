@@ -16,6 +16,14 @@ java -jar target/esig-dss-api-0.1.0.jar
 
 The app loads and checks the EU LOTL and national lists at startup, then refreshes them every six hours. Set `ESIG_LOTL_REFRESH_INTERVAL` to a Spring duration such as `PT12H` to change that interval. It rejects expired or invalidly signed lists and returns HTTP 503 until every linked list has validated. At verification time DSS fetches OCSP or CRL revocation data for the certificate chain, caches it until its `NextUpdate`, and fetches it again when stale. The app also refreshes revocation data hourly for up to 128 recently verified certificates; set `ESIG_REVOCATION_REFRESH_INTERVAL` to change that interval. It retrieves missing issuer certificates through AIA. Network access to the lists and certificate-specific OCSP, CRL, and AIA endpoints is needed for complete results. An exceptional Official Journal replacement of the LOTL signers requires updating the bundled certificates and their published digests.
 
+The JVM reads the operating system clock; it cannot securely synchronize or set the host clock itself. The service checks once per minute for large wall-clock jumps relative to the JVM monotonic clock and exposes that result through `GET /api/status`. This detects sudden changes while the process is running, but cannot tell whether the clock has the correct UTC time. For secure synchronization, configure the host running the app with an NTS-capable time client such as Chrony. Netnod provides a European NTS service; a Chrony configuration can include:
+
+```text
+server nts.netnod.se iburst nts
+```
+
+Keep clock synchronization at the host level; the container does not need `SYS_TIME` or privileged access. See [Netnod's NTS instructions](https://www.netnod.se/netnod-time/how-to-use-nts) for setup details.
+
 ## Endpoint
 
 Multipart, raw `application/octet-stream`, and JSON object requests use the same path. The maximum document size is 25 MiB. Raw requests may set `X-Filename`; if omitted, the service uses `document`.
@@ -36,6 +44,8 @@ The response also has `signatureRelationships`, with one entry for each pair of 
 `contractIntegrity` is a document-level check for signed PDFs. Its `passed` value is true only when every signature has DSS `TOTAL_PASSED` and no contract content change is detected between any signed revision and the submitted PDF. The `issues` list identifies `SIGNATURE_INVALID`, `CONTENT_CHANGED`, or `COMPARISON_INCOMPLETE`, with a signature ID when applicable. PDFs without signatures and other document formats return `passed: false` with `NO_SIGNATURES` or `NON_PDF`. Identifiable later signature fields and validation data are allowed; changes to form values, annotations, pages, or other content fail the check. Visual comparison runs across every page, so large PDFs can take longer to verify. This check does not establish whether content changed before the first signature, and PDF visual comparison cannot guarantee detection of every malicious change.
 
 Invalid or unsupported documents return HTTP 422. Missing trust data returns HTTP 503. A supported document with no signatures returns an empty signature list.
+
+`GET /api/status` returns the current UTC time, JVM version and uptime, scheduled clock-jump check, LOTL refresh timestamps, national trusted-list and certificate counts, and fingerprints and validity periods of the bundled LOTL signing certificates. It returns HTTP 200 when valid trust data is loaded and HTTP 503 otherwise. The status endpoint is unauthenticated and contains only operational data and public certificate metadata.
 
 Malformed JSON or multipart requests return a short HTTP 400 error without echoing the request body. The default logs show trust-list refresh outcomes, revocation refresh summaries, and verification counts and duration. Enable `DEBUG` for `io.github.seuh.esig` when investigating validation details; submitted documents, filenames, and certificate bytes are not included in application log messages.
 
