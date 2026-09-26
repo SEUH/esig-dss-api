@@ -2,10 +2,13 @@ package io.github.seuh.esig;
 
 import eu.europa.esig.dss.diagnostic.CertificateWrapper;
 import eu.europa.esig.dss.diagnostic.DiagnosticData;
+import eu.europa.esig.dss.diagnostic.SignatureWrapper;
 import eu.europa.esig.dss.enumerations.Indication;
 import eu.europa.esig.dss.enumerations.SignatureQualification;
 import eu.europa.esig.dss.model.InMemoryDocument;
 import eu.europa.esig.dss.model.DSSException;
+import eu.europa.esig.dss.pades.validation.PDFDocumentValidator;
+import eu.europa.esig.dss.pdf.ServiceLoaderPdfObjFactory;
 import eu.europa.esig.dss.simplereport.SimpleReport;
 import eu.europa.esig.dss.validation.SignedDocumentValidator;
 import eu.europa.esig.dss.validation.reports.Reports;
@@ -42,12 +45,24 @@ public class VerificationService {
         try {
             SignedDocumentValidator validator = SignedDocumentValidator.fromDocument(
                     new InMemoryDocument(bytes, filename == null || filename.isBlank() ? "document" : filename));
+            PdfContractIntegrity.CompleteDifferencesFinder pdfDifferences = null;
+            PdfContractIntegrity.CompleteObjectModificationsFinder pdfObjectModifications = null;
+            if (validator instanceof PDFDocumentValidator pdfValidator) {
+                pdfDifferences = new PdfContractIntegrity.CompleteDifferencesFinder();
+                pdfObjectModifications = new PdfContractIntegrity.CompleteObjectModificationsFinder();
+                ServiceLoaderPdfObjFactory pdfFactory = new ServiceLoaderPdfObjFactory();
+                pdfFactory.setPdfDifferencesFinder(pdfDifferences);
+                pdfFactory.setPdfObjectModificationsFinder(pdfObjectModifications);
+                pdfValidator.setPdfObjFactory(pdfFactory);
+            }
             validator.setCertificateVerifier(verifier);
             Reports reports = validator.validateDocument();
             SimpleReport simple = reports.getSimpleReport();
             DiagnosticData diagnostic = reports.getDiagnosticData();
             List<SignatureResult> signatures = new ArrayList<>();
+            List<SignatureWrapper> signatureWrappers = new ArrayList<>();
             for (String id : simple.getSignatureIdList()) {
+                signatureWrappers.add(diagnostic.getSignatureById(id));
                 Indication indication = simple.getIndication(id);
                 SignatureQualification qualification = simple.getSignatureQualification(id);
                 List<CertificateData> chain = new ArrayList<>();
@@ -71,9 +86,12 @@ public class VerificationService {
                         chain));
             }
             long qesCount = signatures.stream().filter(SignatureResult::qesValid).count();
+            List<SignatureRelationship> relationships = SignatureRelationships.analyze(signatureWrappers);
+            ContractIntegrity contractIntegrity = PdfContractIntegrity.assess(
+                    pdfDifferences, pdfObjectModifications, signatures, signatureWrappers);
             log.info("Verification completed: bytes={}, signatures={}, qes={}, durationMs={}",
                     bytes.length, signatures.size(), qesCount, elapsedMillis(started));
-            return new VerificationResult(signatures.size(), signatures);
+            return new VerificationResult(signatures.size(), signatures, relationships, contractIntegrity);
         } catch (TrustUnavailableException e) {
             throw e;
         } catch (DSSException | IllegalArgumentException e) {
@@ -99,7 +117,16 @@ public class VerificationService {
         return date == null ? null : date.toInstant();
     }
 
-    public record VerificationResult(int signatureCount, List<SignatureResult> signatures) {}
+    public record VerificationResult(int signatureCount, List<SignatureResult> signatures,
+                                     List<SignatureRelationship> signatureRelationships,
+                                     ContractIntegrity contractIntegrity) {}
+
+    public record ContractIntegrity(boolean passed, List<IntegrityIssue> issues) {}
+
+    public record IntegrityIssue(String code, String signatureId) {}
+
+    public record SignatureRelationship(String type, String sourceId, String targetId,
+                                        int sourceIndex, int targetIndex) {}
 
     public record SignatureResult(String id, String signedBy, Instant claimedSigningTime,
                                   String indication, String subIndication, String qualification,
