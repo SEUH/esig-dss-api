@@ -46,6 +46,14 @@ docker run --rm -p 8080:8080 \
   esig-dss-api
 ```
 
+To run a published GHCR release with Compose, set `ESIG_DSS_TAG` to a published version (or leave it as `latest`) and optionally change the host port with `ESIG_DSS_PORT`:
+
+```bash
+ESIG_DSS_TAG=0.1.0 ESIG_DSS_PORT=8080 docker compose up -d
+```
+
+If the GHCR package is private, authenticate first with `docker login ghcr.io`.
+
 Pushing a `v*` Git tag runs the Maven test suite and then publishes the image to `ghcr.io/seuh/esig-dss-api` with the release tag, semantic version tags, and `latest`. The workflow uses the repository's `GITHUB_TOKEN`; no registry secret is needed. GitHub Container Registry packages are private by default, so change the package visibility in its GitHub settings if public pulls are intended.
 
 References: [DSS validation and trusted-list configuration](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html), [eIDAS trusted-list dashboard](https://eidas.ec.europa.eu/efda/trust-services/browse/eidas/tls), [eIDAS API documentation](https://eidas.ec.europa.eu/efda/swagger-ui/index.html), [DSS releases](https://ec.europa.eu/digital-building-blocks/sites/spaces/DIGITAL/pages/467109114/DSS+releases), [Spring Boot releases](https://docs.spring.io/spring-boot/).

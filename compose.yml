@@ -1,0 +1,12 @@
+services:
+  verification-api:
+    image: ghcr.io/seuh/esig-dss-api:${ESIG_DSS_TAG:-latest}
+    pull_policy: always
+    ports:
+      - "${ESIG_DSS_PORT:-8080}:8080"
+    volumes:
+      - dss-cache:/var/cache/esig-dss-api
+    restart: unless-stopped
+
+volumes:
+  dss-cache:
